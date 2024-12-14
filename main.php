@@ -236,7 +236,7 @@ function libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio
     $pdf->AddPage();
 
     // Add logo
-    $pdf->Image('logo.png', 10, 10, 50);
+    $pdf->Image(plugin_dir_path(__FILE__) . 'logo.png', 10, 10, 50);
 
     // Professional info
     $pdf->SetFont('Helvetica', '', 12);
