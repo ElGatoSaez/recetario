@@ -3,7 +3,7 @@
 Plugin Name: Libro de Recetas
 Plugin URI: https://github.com/elgatosaez/recetario
 Description: Libro de Recetas para Centro Médico Maktub.
-Version: 0.1
+Version: 0.2
 Author: Sebastián Sáez M.
 Author URI: https://gentes.cl
 License: Revista Gentes License Agreement
@@ -16,9 +16,10 @@ if (!defined('ABSPATH')) {
 
 // Import necessary files for dbDelta function
 require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+require_once('tcpdf/tcpdf.php'); // Include TCPDF library
 
 // Define the current database version
-define('LIBRO_DE_RECETAS_DB_VERSION', '1.0');
+define('LIBRO_DE_RECETAS_DB_VERSION', '1.1');
 
 // Basic plugin functionality
 function libro_de_recetas_init() {
@@ -143,6 +144,14 @@ function libro_de_recetas_nueva_html() {
                         <td><input type="text" name="domicilio" value="" /></td>
                     </tr>
                     <tr valign="top">
+                        <th scope="row">Edad</th>
+                        <td><input type="number" name="edad" value="" required /></td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Diagnóstico</th>
+                        <td><textarea name="diagnostico" rows="3" cols="50"></textarea></td>
+                    </tr>
+                    <tr valign="top">
                         <th scope="row">Texto de la Receta</th>
                         <td><textarea name="texto_receta" rows="5" cols="50"></textarea></td>
                     </tr>
@@ -157,6 +166,8 @@ function libro_de_recetas_nueva_html() {
         $staff_id = sanitize_text_field($_POST['staff_id']);
         $rut = sanitize_text_field($_POST['rut']);
         $domicilio = sanitize_text_field($_POST['domicilio']);
+        $edad = intval($_POST['edad']);
+        $diagnostico = sanitize_textarea_field($_POST['diagnostico']);
         $texto_receta = sanitize_textarea_field($_POST['texto_receta']);
         $fecha_emision = current_time('Y-m-d');
         $hora_emision = current_time('H:i:s');
@@ -173,14 +184,76 @@ function libro_de_recetas_nueva_html() {
                 'hora_emision' => $hora_emision,
                 'staff_id' => $staff_id,
                 'domicilio' => $domicilio,
+                'edad' => $edad,
+                'diagnostico' => $diagnostico,
                 'texto_receta' => $texto_receta,
             ]
         );
+
+        // Generate PDF
+        libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio, $edad, $diagnostico, $texto_receta, $fecha_emision, $hora_emision);
 
         echo '<div class="notice notice-success is-dismissible">
                 <p>Receta emitida exitosamente.</p>
               </div>';
     }
+}
+
+function libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio, $edad, $diagnostico, $texto_receta, $fecha_emision, $hora_emision) {
+    global $wpdb;
+
+    $staff_table = $wpdb->prefix . 'bookly_staff';
+    $staff_result = $wpdb->get_row($wpdb->prepare("SELECT full_name, wp_user_id FROM $staff_table WHERE id = %d", $staff_id), ARRAY_A);
+    $staff_name = $staff_result ? $staff_result['full_name'] : 'Profesional Desconocido';
+    $wp_user_id = $staff_result ? $staff_result['wp_user_id'] : null;
+
+    // Get professional RUT from custom table
+    $prflx_table = $wpdb->prefix . 'prflxtrflds_user_field_data';
+    $rut_profesional = $wpdb->get_var($wpdb->prepare("SELECT user_value FROM $prflx_table WHERE user_id = %d AND field_id = 1", $wp_user_id));
+
+    $customer_table = $wpdb->prefix . 'bookly_customers';
+    $customer_result = $wpdb->get_row($wpdb->prepare("SELECT full_name FROM $customer_table WHERE id = %d", $customer_id), ARRAY_A);
+    $customer_name = $customer_result ? $customer_result['full_name'] : 'Paciente Desconocido';
+
+    // Create PDF
+    $pdf = new TCPDF();
+    $pdf->AddPage();
+
+    // Add logo
+    $pdf->Image('logo.png', 10, 10, 50);
+
+    // Professional info
+    $pdf->SetFont('Helvetica', '', 12);
+    $pdf->SetXY(150, 20);
+    $pdf->Write(0, $staff_name);
+    $pdf->SetXY(150, 30);
+    $pdf->Write(0, $rut_profesional);
+
+    // Patient info
+    $pdf->SetXY(10, 50);
+    $pdf->Write(0, "Nombre Paciente: $customer_name");
+    $pdf->SetXY(10, 60);
+    $pdf->Write(0, "Dirección: $domicilio");
+    $pdf->SetXY(10, 70);
+    $pdf->Write(0, "RUT: $rut");
+    $pdf->SetXY(10, 80);
+    $pdf->Write(0, "Edad: $edad");
+    $pdf->SetXY(10, 90);
+    $pdf->Write(0, "Diagnóstico: $diagnostico");
+
+    // Prescription text
+    $pdf->SetXY(10, 110);
+    $pdf->Write(0, "Rp: $texto_receta");
+
+    // Footer
+    $pdf->SetXY(10, 250);
+    $pdf->SetFont('Helvetica', '', 10);
+    $pdf->Write(0, "Firmado electrónicamente por $staff_name el $fecha_emision a las $hora_emision usando el sistema de Recetario.");
+
+    // Signature
+    //$pdf->Image('path/to/signature.png', 150, 240, 30);
+
+    $pdf->Output(WP_CONTENT_DIR . '/uploads/receta_' . time() . '.pdf', 'F');
 }
 
 // Callback function to display "Recetas" page content
@@ -214,6 +287,8 @@ function libro_de_recetas_create_table() {
         hora_emision TIME NOT NULL,
         staff_id INT NOT NULL,
         domicilio TEXT,
+        edad INT NOT NULL,
+        diagnostico TEXT NOT NULL,
         texto_receta TEXT NOT NULL,
         PRIMARY KEY (id)
     ) $charset_collate;";
@@ -239,3 +314,4 @@ register_activation_hook(__FILE__, 'libro_de_recetas_create_table');
 
 // Hook to initialize plugin
 add_action('init', 'libro_de_recetas_init');
+
