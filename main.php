@@ -72,10 +72,115 @@ function libro_de_recetas_nueva_html() {
     if (!current_user_can('manage_options')) {
         return;
     }
+
+    global $wpdb;
+    $current_user = wp_get_current_user();
+    $user_id = $current_user->ID;
+    $staff_options = '';
+    $customer_options = '';
+    $is_admin = false;
+
+    // Check if the user is administrator by looking into usermeta
+    $capabilities = get_user_meta($user_id, $wpdb->prefix . 'capabilities', true);
+    if (is_array($capabilities) && isset($capabilities['administrator'])) {
+        $is_admin = true;
+    }
+
+    // Populate professional options for administrator
+    if ($is_admin) {
+        $staff_table = $wpdb->prefix . 'bookly_staff';
+        $staff_results = $wpdb->get_results("SELECT id, full_name FROM $staff_table", ARRAY_A);
+        foreach ($staff_results as $staff) {
+            $staff_options .= '<option value="' . esc_attr($staff['id']) . '">' . esc_html($staff['full_name']) . ' (' . esc_html($staff['id']) . ')</option>';
+        }
+    } else {
+        // Find the staff_id for non-admin user
+        $staff_table = $wpdb->prefix . 'bookly_staff';
+        $staff_result = $wpdb->get_row($wpdb->prepare("SELECT id, full_name FROM $staff_table WHERE wp_user_id = %d", $user_id), ARRAY_A);
+        if ($staff_result) {
+            $staff_options = '<option value="' . esc_attr($staff_result['id']) . '" selected>' . esc_html($staff_result['full_name']) . ' (' . esc_html($staff_result['id']) . ')</option>';
+        } else {
+            $staff_options = '<option value="">Ningún funcionario disponible</option>';
+            $staff_warning = '<p style="color: red;">Ningún funcionario anclado a esta cuenta de WordPress</p>';
+        }
+    }
+
+    // Populate customer options
+    $customer_table = $wpdb->prefix . 'bookly_customers';
+    $customer_results = $wpdb->get_results("SELECT id, full_name FROM $customer_table", ARRAY_A);
+    foreach ($customer_results as $customer) {
+        $customer_options .= '<option value="' . esc_attr($customer['id']) . '">' . esc_html($customer['full_name']) . ' (' . esc_html($customer['id']) . ')</option>';
+    }
+
+    // Form HTML
     echo '<div class="wrap">
             <h1>Nueva Receta</h1>
-            <p>Aquí puedes agregar una nueva receta.</p>
+            <form method="post" action="">
+                <table class="form-table">
+                    <tr valign="top">
+                        <th scope="row">Profesional que emite</th>
+                        <td>
+                            <select name="staff_id">
+                                ' . $staff_options . '
+                            </select>
+                            ' . ($is_admin ? '' : (isset($staff_warning) ? $staff_warning : '')) . '
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Cliente</th>
+                        <td>
+                            <select name="customer_id">
+                                ' . $customer_options . '
+                            </select>
+                        </td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">RUT</th>
+                        <td><input type="text" name="rut" value="" required /></td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Domicilio</th>
+                        <td><input type="text" name="domicilio" value="" /></td>
+                    </tr>
+                    <tr valign="top">
+                        <th scope="row">Texto de la Receta</th>
+                        <td><textarea name="texto_receta" rows="5" cols="50"></textarea></td>
+                    </tr>
+                </table>
+                <p class="submit"><input type="submit" name="submit" id="submit" class="button button-primary" value="Emitir Receta"></p>
+            </form>
           </div>';
+
+    // Handle form submission
+    if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit'])) {
+        $customer_id = sanitize_text_field($_POST['customer_id']);
+        $staff_id = sanitize_text_field($_POST['staff_id']);
+        $rut = sanitize_text_field($_POST['rut']);
+        $domicilio = sanitize_text_field($_POST['domicilio']);
+        $texto_receta = sanitize_textarea_field($_POST['texto_receta']);
+        $fecha_emision = current_time('Y-m-d');
+        $hora_emision = current_time('H:i:s');
+
+        $table_name = $wpdb->prefix . 'recetario_entry';
+
+        $wpdb->insert(
+            $table_name,
+            [
+                'customer_id' => $customer_id,
+                'appointment_id' => null, // Can be updated later if needed
+                'rut' => $rut,
+                'fecha_emision' => $fecha_emision,
+                'hora_emision' => $hora_emision,
+                'staff_id' => $staff_id,
+                'domicilio' => $domicilio,
+                'texto_receta' => $texto_receta,
+            ]
+        );
+
+        echo '<div class="notice notice-success is-dismissible">
+                <p>Receta emitida exitosamente.</p>
+              </div>';
+    }
 }
 
 // Callback function to display "Recetas" page content
