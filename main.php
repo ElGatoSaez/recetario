@@ -157,7 +157,10 @@ function libro_de_recetas_nueva_html() {
                             <td><textarea name="texto_receta" rows="5" cols="50"></textarea></td>
                         </tr>
                     </table>
-                    <p class="submit"><input type="submit" name="submit" id="submit" class="button button-primary" value="Generar PDF y Visualizar"></p>
+                    <p class="submit">
+                        <input type="submit" name="submit" id="submit-preview" class="button button-primary" value="Generar PDF y Visualizar">
+                        <input type="submit" name="submit_emitir" id="submit-emitir" class="button button-secondary" value="Emitir Receta">
+                    </p>
                 </form>
             </div>
             <div style="flex: 1; border: 1px solid #ccc; padding: 10px; height: 600px; overflow: auto;">
@@ -167,7 +170,7 @@ function libro_de_recetas_nueva_html() {
           </div>';
 
     // Handle form submission
-    if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit'])) {
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $customer_id = sanitize_text_field($_POST['customer_id']);
         $staff_id = sanitize_text_field($_POST['staff_id']);
         $rut = sanitize_text_field($_POST['rut']);
@@ -178,12 +181,37 @@ function libro_de_recetas_nueva_html() {
         $fecha_emision = current_time('Y-m-d');
         $hora_emision = current_time('H:i:s');
 
-        // Generate PDF
-        $pdf_path = libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio, $edad, $diagnostico, $texto_receta, $fecha_emision, $hora_emision);
+        if (isset($_POST['submit'])) {
+            // Generate PDF and display preview
+            $pdf_path = libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio, $edad, $diagnostico, $texto_receta, $fecha_emision, $hora_emision);
 
-        echo '<script>
-                document.getElementById("pdf-preview").src = "' . esc_url($pdf_path) . '";
-              </script>';
+            echo '<script>
+                    document.getElementById("pdf-preview").src = "' . esc_url($pdf_path) . '";
+                  </script>';
+        } elseif (isset($_POST['submit_emitir'])) {
+            // Insert into database
+            $table_name = $wpdb->prefix . 'recetario_entry';
+
+            $wpdb->insert(
+                $table_name,
+                [
+                    'customer_id' => $customer_id,
+                    'appointment_id' => null, // Can be updated later if needed
+                    'rut' => $rut,
+                    'fecha_emision' => $fecha_emision,
+                    'hora_emision' => $hora_emision,
+                    'staff_id' => $staff_id,
+                    'domicilio' => $domicilio,
+                    'edad' => $edad,
+                    'diagnostico' => $diagnostico,
+                    'texto_receta' => $texto_receta,
+                ]
+            );
+
+            echo '<div class="notice notice-success is-dismissible">
+                    <p>Receta emitida exitosamente.</p>
+                  </div>';
+        }
     }
 }
 
