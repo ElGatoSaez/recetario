@@ -113,51 +113,57 @@ function libro_de_recetas_nueva_html() {
         $customer_options .= '<option value="' . esc_attr($customer['id']) . '">' . esc_html($customer['full_name']) . ' (' . esc_html($customer['id']) . ')</option>';
     }
 
-    // Form HTML
-    echo '<div class="wrap">
-            <h1>Nueva Receta</h1>
-            <form method="post" action="">
-                <table class="form-table">
-                    <tr valign="top">
-                        <th scope="row">Profesional que emite</th>
-                        <td>
-                            <select name="staff_id">
-                                ' . $staff_options . '
-                            </select>
-                            ' . ($is_admin ? '' : (isset($staff_warning) ? $staff_warning : '')) . '
-                        </td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Cliente</th>
-                        <td>
-                            <select name="customer_id">
-                                ' . $customer_options . '
-                            </select>
-                        </td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">RUT</th>
-                        <td><input type="text" name="rut" value="" required /></td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Domicilio</th>
-                        <td><input type="text" name="domicilio" value="" /></td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Edad</th>
-                        <td><input type="number" name="edad" value="" required /></td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Diagnóstico</th>
-                        <td><textarea name="diagnostico" rows="3" cols="50"></textarea></td>
-                    </tr>
-                    <tr valign="top">
-                        <th scope="row">Texto de la Receta</th>
-                        <td><textarea name="texto_receta" rows="5" cols="50"></textarea></td>
-                    </tr>
-                </table>
-                <p class="submit"><input type="submit" name="submit" id="submit" class="button button-primary" value="Emitir Receta"></p>
-            </form>
+    // Form HTML with preview pane
+    echo '<div class="wrap" style="display: flex; gap: 20px;">
+            <div style="flex: 1;">
+                <h1>Nueva Receta</h1>
+                <form method="post" action="">
+                    <table class="form-table">
+                        <tr valign="top">
+                            <th scope="row">Profesional que emite</th>
+                            <td>
+                                <select name="staff_id">
+                                    ' . $staff_options . '
+                                </select>
+                                ' . ($is_admin ? '' : (isset($staff_warning) ? $staff_warning : '')) . '
+                            </td>
+                        </tr>
+                        <tr valign="top">
+                            <th scope="row">Cliente</th>
+                            <td>
+                                <select name="customer_id">
+                                    ' . $customer_options . '
+                                </select>
+                            </td>
+                        </tr>
+                        <tr valign="top">
+                            <th scope="row">RUT</th>
+                            <td><input type="text" name="rut" value="" required /></td>
+                        </tr>
+                        <tr valign="top">
+                            <th scope="row">Domicilio</th>
+                            <td><input type="text" name="domicilio" value="" /></td>
+                        </tr>
+                        <tr valign="top">
+                            <th scope="row">Edad</th>
+                            <td><input type="number" name="edad" value="" required /></td>
+                        </tr>
+                        <tr valign="top">
+                            <th scope="row">Diagnóstico</th>
+                            <td><textarea name="diagnostico" rows="3" cols="50"></textarea></td>
+                        </tr>
+                        <tr valign="top">
+                            <th scope="row">Texto de la Receta</th>
+                            <td><textarea name="texto_receta" rows="5" cols="50"></textarea></td>
+                        </tr>
+                    </table>
+                    <p class="submit"><input type="submit" name="submit" id="submit" class="button button-primary" value="Generar PDF y Visualizar"></p>
+                </form>
+            </div>
+            <div style="flex: 1; border: 1px solid #ccc; padding: 10px; height: 600px; overflow: auto;">
+                <h2>Vista Previa de la Receta</h2>
+                <iframe id="pdf-preview" src="" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
           </div>';
 
     // Handle form submission
@@ -172,30 +178,12 @@ function libro_de_recetas_nueva_html() {
         $fecha_emision = current_time('Y-m-d');
         $hora_emision = current_time('H:i:s');
 
-        $table_name = $wpdb->prefix . 'recetario_entry';
-
-        $wpdb->insert(
-            $table_name,
-            [
-                'customer_id' => $customer_id,
-                'appointment_id' => null, // Can be updated later if needed
-                'rut' => $rut,
-                'fecha_emision' => $fecha_emision,
-                'hora_emision' => $hora_emision,
-                'staff_id' => $staff_id,
-                'domicilio' => $domicilio,
-                'edad' => $edad,
-                'diagnostico' => $diagnostico,
-                'texto_receta' => $texto_receta,
-            ]
-        );
-
         // Generate PDF
-        libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio, $edad, $diagnostico, $texto_receta, $fecha_emision, $hora_emision);
+        $pdf_path = libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio, $edad, $diagnostico, $texto_receta, $fecha_emision, $hora_emision);
 
-        echo '<div class="notice notice-success is-dismissible">
-                <p>Receta emitida exitosamente.</p>
-              </div>';
+        echo '<script>
+                document.getElementById("pdf-preview").src = "' . esc_url($pdf_path) . '";
+              </script>';
     }
 }
 
@@ -253,7 +241,10 @@ function libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio
     // Signature
     //$pdf->Image('path/to/signature.png', 150, 240, 30);
 
-    $pdf->Output(WP_CONTENT_DIR . '/uploads/receta_' . time() . '.pdf', 'F');
+    $pdf_path = WP_CONTENT_URL . '/uploads/receta_' . time() . '.pdf';
+    $pdf->Output(str_replace(WP_CONTENT_URL, WP_CONTENT_DIR, $pdf_path), 'F');
+
+    return $pdf_path;
 }
 
 // Callback function to display "Recetas" page content
@@ -314,4 +305,3 @@ register_activation_hook(__FILE__, 'libro_de_recetas_create_table');
 
 // Hook to initialize plugin
 add_action('init', 'libro_de_recetas_init');
-
