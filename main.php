@@ -226,6 +226,7 @@ function libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio
     // Get professional RUT from custom table
     $prflx_table = $wpdb->prefix . 'prflxtrflds_user_field_data';
     $rut_profesional = $wpdb->get_var($wpdb->prepare("SELECT user_value FROM $prflx_table WHERE user_id = %d AND field_id = 1", $wp_user_id));
+    $profesion_profesional = $wpdb->get_var($wpdb->prepare("SELECT user_value FROM $prflx_table WHERE user_id = %d AND field_id = 2", $wp_user_id));
 
     $customer_table = $wpdb->prefix . 'bookly_customers';
     $customer_result = $wpdb->get_row($wpdb->prepare("SELECT full_name FROM $customer_table WHERE id = %d", $customer_id), ARRAY_A);
@@ -235,6 +236,20 @@ function libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio
     $pdf = new TCPDF();
     $pdf->AddPage();
 
+    // Add logo as watermark
+    $pdf->SetAlpha(0.2); // Reduce opacity to 20%
+    $page_width = $pdf->GetPageWidth();
+    $page_height = $pdf->GetPageHeight();
+    $logo_width = 150; // Adjust logo size as needed
+    $logo_height = 100; // Adjust logo size as needed
+
+    $logo_x = ($page_width - $logo_width) / 2; // Center horizontally
+    $logo_y = ($page_height - $logo_height) / 2; // Center vertically
+
+    $pdf->Image(plugin_dir_path(__FILE__) . 'logo.png', $logo_x, $logo_y, $logo_width, $logo_height);
+    $pdf->SetAlpha(1); // Reset opacity back to full
+
+
     // Add logo
     $pdf->Image(plugin_dir_path(__FILE__) . 'logo.png', 10, 10, 50);
 
@@ -242,24 +257,69 @@ function libro_de_recetas_generate_pdf($staff_id, $customer_id, $rut, $domicilio
     $pdf->SetFont('Helvetica', '', 12);
     $pdf->SetXY(150, 20);
     $pdf->Write(0, $staff_name);
+    $pdf->SetXY(150, 25);
+    $pdf->Write(0, $profesion_profesional);
     $pdf->SetXY(150, 30);
     $pdf->Write(0, $rut_profesional);
 
-    // Patient info
+    // Patient info with formatting adjustments
+    $pdf->SetFont('Helvetica', 'B', 12); // Negrita para los títulos
+
     $pdf->SetXY(10, 50);
-    $pdf->Write(0, "Nombre Paciente: $customer_name");
+    $pdf->Write(0, "Nombre Paciente:");
+    $pdf->SetFont('Helvetica', '', 12); // Texto regular
+    $pdf->SetXY(50, 50); // Continuar en la misma línea
+    $pdf->Write(0, $customer_name);
+
+    $pdf->SetFont('Helvetica', 'B', 12);
+    $pdf->SetXY(10, 55);
+    $pdf->Write(0, "Dirección:");
+    $pdf->SetFont('Helvetica', '', 12);
+    $pdf->SetXY(40, 55);
+    $pdf->Write(0, $domicilio);
+
+    // RUT y Edad en la misma línea
+    $pdf->SetFont('Helvetica', 'B', 12);
     $pdf->SetXY(10, 60);
-    $pdf->Write(0, "Dirección: $domicilio");
+    $pdf->Write(0, "RUT:");
+    $pdf->SetFont('Helvetica', '', 12);
+    $pdf->SetXY(25, 60); // Ajusta la posición para mantener el texto alineado
+    $pdf->Write(0, $rut);
+
+    $pdf->SetFont('Helvetica', 'B', 12);
+    $pdf->SetXY(10, 65); // Posiciona después de RUT
+    $pdf->Write(0, "Edad:");
+    $pdf->SetFont('Helvetica', '', 12);
+    $pdf->SetXY(25, 65);
+    $pdf->Write(0, $edad);
+
+    $pdf->SetFont('Helvetica', 'B', 12);
     $pdf->SetXY(10, 70);
-    $pdf->Write(0, "RUT: $rut");
-    $pdf->SetXY(10, 80);
-    $pdf->Write(0, "Edad: $edad");
-    $pdf->SetXY(10, 90);
-    $pdf->Write(0, "Diagnóstico: $diagnostico");
+    $pdf->Write(0, "Diagnóstico:");
+    $pdf->SetFont('Helvetica', '', 12);
+    $pdf->SetXY(40, 70);
+    $pdf->Write(0, $diagnostico);
 
     // Prescription text
-    $pdf->SetXY(10, 110);
+    $pdf->SetXY(10, 95);
     $pdf->Write(0, "Rp: $texto_receta");
+
+    // Firma del médico alineada a la derecha
+    $signature_x = 150; // Posición horizontal para alinear a la derecha
+    $signature_y = 200; // Posición vertical (ajusta según el diseño)
+
+    // Agregar la imagen de la firma (asegúrate de que el archivo exista en el plugin)
+    $pdf->Image(plugin_dir_path(__FILE__) . 'firma.png', $signature_x, $signature_y, 60, 40); // Tamaño: ancho 40, alto 20
+
+    // Línea para la firma
+    $pdf->SetFont('Helvetica', '', 12); // Fuente para el texto
+    $pdf->SetXY($signature_x, $signature_y + 25); // Justo debajo de la imagen
+    $pdf->Write(0, "_______________");
+
+    // Texto "Firma Médico"
+    $pdf->SetXY($signature_x, $signature_y + 30); // Debajo de la línea
+    $pdf->Write(0, "Firma Médico");
+
 
     // Footer
     $pdf->SetXY(10, 250);
